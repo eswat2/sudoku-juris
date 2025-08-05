@@ -1,0 +1,934 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Play interactive Sudoku puzzles online. Free responsive Sudoku game with hints, real-time validation, and automatic puzzle generation. Perfect for mobile and desktop."
+    />
+    <meta
+      name="keywords"
+      content="sudoku, puzzle, game, brain training, logic, numbers, free, online"
+    />
+    <meta name="author" content="Interactive Sudoku Game" />
+    <meta name="robots" content="index, follow" />
+    <title>Interactive Sudoku Game - Free Online Puzzle</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        background-color: #f5f5f5;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+      }
+
+      .container {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        text-align: center;
+        max-width: 100vw;
+        box-sizing: border-box;
+      }
+
+      h1 {
+        color: #333;
+        margin-bottom: 10px;
+        font-size: 2em;
+      }
+
+      .difficulty {
+        color: #666;
+        margin-bottom: 20px;
+        font-style: italic;
+      }
+    </style>
+    
+    <!-- Juris.js CDN -->
+    <script src="https://unpkg.com/juris@0.88.2/juris.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Sudoku</h1>
+      <div class="difficulty">Interactive Puzzle</div>
+      <div id="app"></div>
+    </div>
+
+    <script>
+      console.log("Juris Sudoku starting...")
+
+      // Create Juris instance with initial state
+      const juris = new Juris({
+        states: {
+          sudoku: {
+            currentPuzzle: null,
+            originalPuzzle: null,
+            solutionPuzzle: null,
+            selectedRow: -1,
+            selectedCol: -1,
+            loading: false,
+            error: null,
+            completed: false
+          }
+        },
+        layout: {
+          SudokuGame: {}
+        }
+      })
+
+      // API and storage constants
+      const API_ENDPOINT = "https://sudoku-rust-api.vercel.app/api/puzzle"
+      const STORAGE_KEY = "sudoku-game-state"
+
+      // Utility functions
+      function parseStringPuzzle(puzzleString) {
+        const grid = []
+        for (let row = 0; row < 9; row++) {
+          grid[row] = []
+          for (let col = 0; col < 9; col++) {
+            const index = row * 9 + col
+            const char = puzzleString[index]
+            if (char === "." || char === "0") {
+              grid[row][col] = 0
+            } else {
+              grid[row][col] = parseInt(char, 10)
+            }
+          }
+        }
+        return grid
+      }
+
+      function decodeSolution(base64Ref) {
+        try {
+          const decoded = atob(base64Ref)
+          const grid = []
+          for (let row = 0; row < 9; row++) {
+            grid[row] = []
+            for (let col = 0; col < 9; col++) {
+              const index = row * 9 + col
+              grid[row][col] = parseInt(decoded[index], 10)
+            }
+          }
+          return grid
+        } catch (error) {
+          console.error("Error decoding solution:", error)
+          return null
+        }
+      }
+
+      function isValidMove(currentPuzzle, row, col, num) {
+        // Check row
+        for (let c = 0; c < 9; c++) {
+          if (currentPuzzle[row][c] === num) return false
+        }
+
+        // Check column
+        for (let r = 0; r < 9; r++) {
+          if (currentPuzzle[r][col] === num) return false
+        }
+
+        // Check 3x3 box
+        const boxRow = Math.floor(row / 3) * 3
+        const boxCol = Math.floor(col / 3) * 3
+        for (let r = boxRow; r < boxRow + 3; r++) {
+          for (let c = boxCol; c < boxCol + 3; c++) {
+            if (currentPuzzle[r][c] === num) return false
+          }
+        }
+
+        return true
+      }
+
+      function getValidNumbers(currentPuzzle, row, col) {
+        const validNumbers = []
+        for (let num = 1; num <= 9; num++) {
+          if (isValidMove(currentPuzzle, row, col, num)) {
+            validNumbers.push(num)
+          }
+        }
+        return validNumbers
+      }
+
+      function canClearCell(originalPuzzle, row, col) {
+        return originalPuzzle[row][col] === 0
+      }
+
+      function checkCompletion(currentPuzzle, solutionPuzzle) {
+        if (!solutionPuzzle) return false
+        
+        for (let row = 0; row < 9; row++) {
+          for (let col = 0; col < 9; col++) {
+            if (currentPuzzle[row][col] !== solutionPuzzle[row][col]) {
+              return false
+            }
+          }
+        }
+        return true
+      }
+
+      // Storage functions
+      function saveGameState() {
+        try {
+          if (typeof Storage === "undefined" || !window.localStorage) {
+            return
+          }
+
+          const state = juris.getState('sudoku')
+          if (!state.currentPuzzle || !state.originalPuzzle) {
+            return
+          }
+
+          const gameState = {
+            current: JSON.parse(JSON.stringify(state.currentPuzzle)),
+            original: JSON.parse(JSON.stringify(state.originalPuzzle)),
+            solution: state.solutionPuzzle ? JSON.parse(JSON.stringify(state.solutionPuzzle)) : null,
+            selectedRow: state.selectedRow,
+            selectedCol: state.selectedCol,
+            completed: state.completed,
+            timestamp: Date.now(),
+            version: "1.0"
+          }
+
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState))
+          console.log("✅ Game state saved with selection:", state.selectedRow, state.selectedCol)
+        } catch (error) {
+          console.error("Error saving game state:", error)
+        }
+      }
+
+      function tryRestoreFromStorage() {
+        try {
+          if (typeof Storage === "undefined" || !window.localStorage) {
+            return false
+          }
+
+          const savedData = localStorage.getItem(STORAGE_KEY)
+          if (!savedData) {
+            return false
+          }
+
+          const gameState = JSON.parse(savedData)
+          
+          // Validate saved data
+          if (!gameState.current || !gameState.original || 
+              !Array.isArray(gameState.current) || gameState.current.length !== 9) {
+            localStorage.removeItem(STORAGE_KEY)
+            return false
+          }
+
+          // Check if data is too old (7 days)
+          const maxAge = 7 * 24 * 60 * 60 * 1000
+          if (gameState.timestamp && Date.now() - gameState.timestamp > maxAge) {
+            localStorage.removeItem(STORAGE_KEY)
+            return false
+          }
+
+          // Restore state including selection
+          juris.setState('sudoku', {
+            currentPuzzle: gameState.current,
+            originalPuzzle: gameState.original,
+            solutionPuzzle: gameState.solution,
+            selectedRow: gameState.selectedRow !== undefined ? gameState.selectedRow : -1,
+            selectedCol: gameState.selectedCol !== undefined ? gameState.selectedCol : -1,
+            completed: gameState.completed || false,
+            loading: false,
+            error: null
+          })
+
+          console.log("✅ Game state restored with selection:", gameState.selectedRow, gameState.selectedCol)
+          return true
+        } catch (error) {
+          console.error("Error restoring game state:", error)
+          if (window.localStorage) {
+            localStorage.removeItem(STORAGE_KEY)
+          }
+          return false
+        }
+      }
+
+      function clearSavedGame() {
+        try {
+          if (typeof Storage !== "undefined" && window.localStorage) {
+            localStorage.removeItem(STORAGE_KEY)
+          }
+        } catch (error) {
+          console.error("Error clearing saved game:", error)
+        }
+      }
+
+      // API functions
+      async function loadPuzzle() {
+        console.log("Loading new puzzle...")
+        
+        juris.setState('sudoku', {
+          loading: true,
+          error: null,
+          completed: false
+        })
+
+        try {
+          const response = await fetch(API_ENDPOINT, {
+            method: "GET",
+            headers: { Accept: "application/json" },
+            mode: "cors",
+          })
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`)
+          }
+
+          const puzzleData = await response.json()
+          processPuzzleData(puzzleData)
+        } catch (error) {
+          console.error("API failed, using fallback:", error)
+          
+          // Fallback puzzle
+          const fallbackData = {
+            puzzle: "..4......2..61.8...7..2......6.9....3...7...2...3...67.1.48.2......3......5...93.",
+            ref: "MTY0ODUzNzI5MjM5NjE3ODU0NTc4OTI0MzE2NzQ2MTkyNTgzMzgxNTc2NDkyOTUyMzQ4MTY3NjEzNDg5Mjc1ODk3MjM1NjQxNDI1NzYxOTM4"
+          }
+          
+          processPuzzleData(fallbackData)
+        }
+      }
+
+      function processPuzzleData(data) {
+        const currentPuzzle = parseStringPuzzle(data.puzzle)
+        const originalPuzzle = JSON.parse(JSON.stringify(currentPuzzle))
+        const solutionPuzzle = data.ref ? decodeSolution(data.ref) : null
+
+        juris.setState('sudoku', {
+          currentPuzzle,
+          originalPuzzle,
+          solutionPuzzle,
+          selectedRow: -1,
+          selectedCol: -1,
+          loading: false,
+          error: null,
+          completed: false
+        })
+
+        saveGameState()
+        console.log("✅ Puzzle loaded and processed")
+      }
+
+      // Game actions
+      function selectCell(row, col) {
+        const state = juris.getState('sudoku')
+        
+        // If clicking same cell, deselect
+        if (state.selectedRow === row && state.selectedCol === col) {
+          juris.setState('sudoku.selectedRow', -1)
+          juris.setState('sudoku.selectedCol', -1)
+        } else {
+          juris.setState('sudoku.selectedRow', row)
+          juris.setState('sudoku.selectedCol', col)
+        }
+        
+        saveGameState()
+      }
+
+      function placeNumber(row, col, number) {
+        const state = juris.getState('sudoku')
+        
+        // Update puzzle
+        const newPuzzle = JSON.parse(JSON.stringify(state.currentPuzzle))
+        newPuzzle[row][col] = number
+        
+        juris.setState('sudoku.currentPuzzle', newPuzzle)
+
+        // Check if correct
+        if (state.solutionPuzzle) {
+          const isCorrect = state.solutionPuzzle[row][col] === number
+          
+          if (!isCorrect) {
+            console.log("❌ Incorrect number, will auto-remove")
+            
+            // Auto-remove incorrect number after delay
+            setTimeout(() => {
+              const currentState = juris.getState('sudoku')
+              const correctedPuzzle = JSON.parse(JSON.stringify(currentState.currentPuzzle))
+              correctedPuzzle[row][col] = 0
+              juris.setState('sudoku.currentPuzzle', correctedPuzzle)
+              saveGameState()
+            }, 1000)
+          } else {
+            console.log("✅ Correct!")
+            
+            // Check for completion
+            const isComplete = checkCompletion(newPuzzle, state.solutionPuzzle)
+            if (isComplete) {
+              juris.setState('sudoku.completed', true)
+              clearSavedGame()
+              console.log("🎉 Puzzle completed!")
+            }
+          }
+        }
+        
+        saveGameState()
+      }
+
+      function clearCell(row, col) {
+        const state = juris.getState('sudoku')
+        
+        if (!canClearCell(state.originalPuzzle, row, col)) {
+          return
+        }
+
+        const newPuzzle = JSON.parse(JSON.stringify(state.currentPuzzle))
+        newPuzzle[row][col] = 0
+        
+        juris.setState('sudoku.currentPuzzle', newPuzzle)
+        saveGameState()
+      }
+
+      function newPuzzle() {
+        clearSavedGame()
+        loadPuzzle()
+      }
+
+      // Register the main Sudoku game component
+      juris.registerComponent('SudokuGame', (props, { getState }) => {
+        // Use reactive function to get fresh state on every render
+        const state = () => getState('sudoku')
+        
+        return {
+          div: {
+            children: () => {
+              const currentState = state()
+              
+              if (currentState.loading) {
+                return [{
+                  div: {
+                    className: 'sudoku-container',
+                    children: [{
+                      div: {
+                        className: 'loading',
+                        style: {
+                          width: 'min(450px, 90vw)',
+                          height: 'min(450px, 90vw)',
+                          border: '3px solid #333',
+                          backgroundColor: 'white',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '18px',
+                          color: '#666',
+                          flexDirection: 'column',
+                          gap: '20px'
+                        },
+                        children: [
+                          'Loading puzzle...',
+                          {
+                            button: {
+                              text: 'Reload Page',
+                              style: {
+                                padding: '10px 20px',
+                                backgroundColor: '#f44336',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontSize: '16px'
+                              },
+                              onclick: () => window.location.reload()
+                            }
+                          }
+                        ]
+                      }
+                    }]
+                  }
+                }]
+              }
+
+              if (!currentState.currentPuzzle) {
+                return [{
+                  div: {
+                    className: 'error',
+                    text: 'No puzzle data available'
+                  }
+                }]
+              }
+
+              return [{
+                SudokuBoard: { state: currentState }
+              }]
+            }
+          }
+        }
+      })
+
+      // Register the Sudoku board component
+      juris.registerComponent('SudokuBoard', (props, { getState }) => {
+        const { state } = props
+        
+        // Calculate responsive cell size
+        const maxWidth = Math.min(window.innerWidth - 40, 453)
+        const cellSize = Math.floor(maxWidth / 9)
+        const gridSize = cellSize * 9
+
+        return {
+          div: {
+            className: 'sudoku-container',
+            style: {
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '20px'
+            },
+            children: () => {
+              // Get fresh state for every render
+              const currentState = getState('sudoku')
+              
+              return [
+                {
+                  SudokuGrid: { 
+                    state: currentState, 
+                    cellSize,
+                    gridSize 
+                  }
+                },
+                {
+                  SudokuControls: { 
+                    state: currentState,
+                    gridSize 
+                  }
+                }
+              ]
+            }
+          }
+        }
+      })
+
+      // Register the Sudoku grid component
+      juris.registerComponent('SudokuGrid', (props, context) => {
+        const { cellSize } = props
+        
+        return {
+          div: {
+            className: 'sudoku-grid',
+            style: {
+              display: 'grid',
+              gridTemplateColumns: `repeat(9, ${cellSize}px)`,
+              gridTemplateRows: `repeat(9, ${cellSize}px)`,
+              gap: '1px',
+              border: '3px solid #333',
+              backgroundColor: '#333'
+            },
+            children: () => {
+              // Generate cells reactively - each cell gets just row, col, and cellSize
+              // The cell itself will reactively get state via getState()
+              const cells = []
+              for (let row = 0; row < 9; row++) {
+                for (let col = 0; col < 9; col++) {
+                  cells.push({
+                    SudokuCell: {
+                      row,
+                      col,
+                      cellSize
+                    }
+                  })
+                }
+              }
+              return cells
+            }
+          }
+        }
+      })
+
+      // Helper function to determine if a cell should be highlighted
+      function shouldHighlightCell(row, col, state) {
+        if (state.selectedRow === -1 || state.selectedCol === -1) return ''
+        
+        const selectedValue = state.currentPuzzle[state.selectedRow][state.selectedCol]
+        const cellValue = state.currentPuzzle[row][col]
+        const selectedBoxRow = Math.floor(state.selectedRow / 3)
+        const selectedBoxCol = Math.floor(state.selectedCol / 3)
+        const cellBoxRow = Math.floor(row / 3)
+        const cellBoxCol = Math.floor(col / 3)
+
+        // Same number highlighting
+        if (selectedValue !== 0 && cellValue === selectedValue && cellValue !== 0) {
+          return 'highlighted-number'
+        }
+        
+        // Row highlighting
+        if (row === state.selectedRow && !(row === state.selectedRow && col === state.selectedCol)) {
+          return 'highlighted-row'
+        }
+        
+        // Column highlighting
+        if (col === state.selectedCol && !(row === state.selectedRow && col === state.selectedCol)) {
+          return 'highlighted-col'
+        }
+        
+        // Box highlighting
+        if (cellBoxRow === selectedBoxRow && cellBoxCol === selectedBoxCol && 
+            !(row === state.selectedRow && col === state.selectedCol)) {
+          return 'highlighted-box'
+        }
+        
+        return ''
+      }
+
+      // Register individual cell component
+      juris.registerComponent('SudokuCell', (props, { getState }) => {
+        const { row, col, cellSize } = props
+        
+        return {
+          div: {
+            className: () => {
+              const state = getState('sudoku')
+              const value = state.currentPuzzle[row][col]
+              const originalValue = state.originalPuzzle[row][col]
+              const isSelected = state.selectedRow === row && state.selectedCol === col
+              const isHighlighted = shouldHighlightCell(row, col, state)
+              
+              const isEmpty = value === 0
+              const isUserInput = originalValue === 0 && value !== 0
+              
+              let cellClass = 'cell'
+              if (isEmpty) cellClass += ' empty'
+              if (isUserInput) cellClass += ' user-input'
+              if (isSelected) cellClass += ' selected'
+              if (isHighlighted) cellClass += ` ${isHighlighted}`
+              
+              return cellClass
+            },
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: 'white',
+              fontSize: `${Math.max(12, cellSize * 0.4)}px`,
+              fontWeight: 'bold',
+              color: '#333',
+              cursor: 'pointer',
+              transition: 'background-color 0.2s ease',
+              userSelect: 'none',
+              // Add 3x3 box borders
+              ...getBorderStyles(row, col)
+            },
+            text: () => {
+              const state = getState('sudoku')
+              const value = state.currentPuzzle[row][col]
+              return value === 0 ? '' : value.toString()
+            },
+            onclick: () => selectCell(row, col),
+            oncontextmenu: (e) => {
+              e.preventDefault()
+              const state = getState('sudoku')
+              if (canClearCell(state.originalPuzzle, row, col)) {
+                clearCell(row, col)
+              }
+            }
+          }
+        }
+      })
+
+      // Helper function for 3x3 box borders
+      function getBorderStyles(row, col) {
+        const styles = {}
+        
+        // Right border for 3x3 boxes (columns 2, 5)
+        if (col === 2 || col === 5) {
+          styles.borderRight = '2px solid #333'
+        }
+        
+        // Bottom border for 3x3 boxes (rows 2, 5)
+        if (row === 2 || row === 5) {
+          styles.borderBottom = '2px solid #333'
+        }
+        
+        return styles
+      }
+
+      // Register controls component
+      juris.registerComponent('SudokuControls', (props) => {
+        const { state, gridSize } = props
+        
+        return {
+          div: {
+            className: 'controls',
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              gap: '15px',
+              width: '100%',
+              maxWidth: `${gridSize}px`,
+              flexWrap: 'wrap',
+              justifyContent: 'flex-start'
+            },
+            children: [
+              {
+                button: {
+                  className: 'btn',
+                  text: 'New Puzzle',
+                  style: {
+                    padding: '10px 20px',
+                    backgroundColor: '#1976d2',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '16px'
+                  },
+                  onclick: newPuzzle
+                }
+              },
+              {
+                ValidOptions: { state }
+              }
+            ]
+          }
+        }
+      })
+
+      // Register valid options component
+      juris.registerComponent('ValidOptions', (props, { getState }) => {
+        return {
+          div: {
+            children: () => {
+              // Get fresh state for every render
+              const state = getState('sudoku')
+              
+              if (state.selectedRow === -1 || state.selectedCol === -1) {
+                return [] // Empty when no cell selected
+              }
+
+              if (state.completed) {
+                return [{
+                  div: {
+                    className: 'valid-options',
+                    style: { display: 'flex', alignItems: 'center', gap: '10px' },
+                    children: [{
+                      span: {
+                        text: '🎉 Puzzle completed! 🎉',
+                        style: {
+                          color: '#4caf50',
+                          fontWeight: 'bold'
+                        }
+                      }
+                    }]
+                  }
+                }]
+              }
+
+              const row = state.selectedRow
+              const col = state.selectedCol
+              const currentValue = state.currentPuzzle[row][col]
+
+              // If cell has value, show clear option
+              if (currentValue !== 0) {
+                if (canClearCell(state.originalPuzzle, row, col)) {
+                  return [{
+                    div: {
+                      className: 'valid-options',
+                      style: { display: 'flex', alignItems: 'center', gap: '10px' },
+                      children: [
+                        {
+                          div: {
+                            className: 'options-grid',
+                            style: { display: 'flex', gap: '5px', flexWrap: 'wrap' },
+                            children: [
+                              {
+                                div: {
+                                  className: 'clear-cell',
+                                  text: '✕',
+                                  style: {
+                                    width: '24px',
+                                    height: '24px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    borderRadius: '4px',
+                                    fontSize: '12px',
+                                    fontWeight: 'bold',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                    backgroundColor: '#ffebee',
+                                    border: '2px solid #f44336',
+                                    color: '#d32f2f'
+                                  },
+                                  onclick: () => clearCell(row, col)
+                                }
+                              },
+                              {
+                                span: {
+                                  text: 'Right-click to clear',
+                                  className: 'no-options',
+                                  style: {
+                                    color: '#666',
+                                    fontStyle: 'italic',
+                                    fontSize: '12px'
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }]
+                } else {
+                  return [{
+                    div: {
+                      className: 'valid-options',
+                      style: { display: 'flex', alignItems: 'center', gap: '10px' },
+                      children: [{
+                        span: {
+                          text: 'Original puzzle cell',
+                          className: 'no-options',
+                          style: {
+                            color: '#666',
+                            fontStyle: 'italic',
+                            fontSize: '12px'
+                          }
+                        }
+                      }]
+                    }
+                  }]
+                }
+              }
+
+              // Cell is empty - show valid numbers
+              const validNumbers = getValidNumbers(state.currentPuzzle, row, col)
+
+              if (validNumbers.length === 0) {
+                return [{
+                  div: {
+                    className: 'valid-options',
+                    style: { display: 'flex', alignItems: 'center', gap: '10px' },
+                    children: [{
+                      span: {
+                        text: 'No valid options',
+                        className: 'no-options',
+                        style: {
+                          color: '#666',
+                          fontStyle: 'italic',
+                          fontSize: '12px'
+                        }
+                      }
+                    }]
+                  }
+                }]
+              }
+
+              const numberOptions = validNumbers.map(num => ({
+                div: {
+                  className: 'option-number',
+                  text: num.toString(),
+                  style: {
+                    width: '24px',
+                    height: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '4px',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    backgroundColor: '#e8f5e8',
+                    border: '2px solid #4caf50',
+                    color: '#2e7d32'
+                  },
+                  onclick: () => placeNumber(row, col, num)
+                }
+              }))
+
+              return [{
+                div: {
+                  className: 'valid-options',
+                  style: { display: 'flex', alignItems: 'center', gap: '10px' },
+                  children: [{
+                    div: {
+                      className: 'options-grid',
+                      style: { display: 'flex', gap: '5px', flexWrap: 'wrap' },
+                      children: numberOptions
+                    }
+                  }]
+                }
+              }]
+            }
+          }
+        }
+      })
+
+      // Add CSS for the game
+      const gameStyles = `
+        .cell:hover {
+          background-color: #e8f4f8 !important;
+        }
+        
+        .cell.selected {
+          background-color: #bbdefb !important;
+          box-shadow: inset 0 0 0 2px #1976d2;
+        }
+        
+        .cell.highlighted-row,
+        .cell.highlighted-col,
+        .cell.highlighted-box {
+          background-color: #e3f2fd !important;
+        }
+        
+        .cell.highlighted-number {
+          background-color: #fff3e0 !important;
+        }
+        
+        .cell.user-input {
+          background-color: #e8f5e8 !important;
+          color: #2e7d32;
+        }
+        
+        .cell.incorrect {
+          background-color: #ffebee !important;
+          color: #d32f2f;
+          animation: shake 0.5s ease-in-out;
+        }
+        
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-2px); }
+          75% { transform: translateX(2px); }
+        }
+        
+        .btn:hover {
+          background-color: #1565c0;
+        }
+        
+        .option-number:hover {
+          background-color: #c8e6c9;
+          transform: scale(1.1);
+        }
+        
+        .clear-cell:hover {
+          background-color: #ffcdd2;
+          transform: scale(1.1);
+        }
+      `
+
+      // Inject styles
+      const styleElement = document.createElement('style')
+      styleElement.textContent = gameStyles
+      document.head.appendChild(styleElement)
+
+      // Initialize the game
+      console.log("Initializing Sudoku game...")
+      
+      // Try to restore saved game, otherwise load new puzzle
+      if (!tryRestoreFromStorage()) {
+        loadPuzzle()
+      }
+
+      // Render the game
+      juris.render('#app')
+      
+      console.log("Sudoku game initialized!")
+    </script>
+  </body>
+</html>
