@@ -91,12 +91,21 @@ juris.registerComponent('SudokuCell', (props, { getState }) => {
 
 No lifecycle management. No manual DOM updates. No event cleanup. Just describe what the cell should look like and how it should behave, and Juris handles the rest.
 
-## The Migration: 800 Lines to 300 Lines
+## The Migration: 947 Script Lines to 767
 
-The conversion results were dramatic:
+> **Corrected September 2026.** This section originally claimed a drop from
+> ~800 lines to ~300, a 70% reduction. Those numbers were never measured and
+> are wrong. Counting the two `index.html` files at the commits either side of
+> the migration: the Web Components build was 1,166 lines total / 947 non-blank
+> lines inside its `<script>`; the Juris build was 934 total / 767 script. That
+> is a **19–20% reduction**, not 70%. The qualitative points below still hold —
+> what disappeared was manual DOM and lifecycle code — but the headline figure
+> was inflated more than threefold.
+
+The conversion results, measured:
 
 ### Before (Web Components):
-- **800+ lines** of complex JavaScript
+- **947 non-blank script lines**
 - **Manual DOM manipulation** with innerHTML and appendChild
 - **Custom state management** with localStorage integration
 - **Complex lifecycle hooks** for mounting/unmounting
@@ -104,7 +113,7 @@ The conversion results were dramatic:
 - **Imperative rendering** with conditional DOM updates
 
 ### After (Juris.js):
-- **~300 lines** of declarative code
+- **767 non-blank script lines** of declarative code
 - **Object-based UI descriptions** - no direct DOM manipulation
 - **Reactive state management** with automatic persistence
 - **Zero lifecycle complexity** - components just describe themselves
@@ -261,7 +270,7 @@ This isn't about abandoning modern features—the Juris version has all the reac
 
 ## Conclusion: Sometimes Less Really Is More
 
-Converting a complex Sudoku game from Web Components to Juris.js reduced the codebase by 70% while improving performance and maintainability. But the real win wasn't the lines of code saved—it was the mental model simplified.
+Converting a complex Sudoku game from Web Components to Juris.js reduced the codebase by about 20% (947 script lines to 767 — see the correction above; the original 70% claim was wrong). The performance claims in this post were never benchmarked. The real win wasn't the lines of code saved — it was the mental model simplified, and that part holds up.
 
 Web development doesn't have to be complicated. Sometimes the best solution isn't the most sophisticated one—it's the one that gets out of your way and lets you focus on what you're actually building.
 

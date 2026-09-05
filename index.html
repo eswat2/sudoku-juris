@@ -82,7 +82,31 @@
 
       // API and storage constants
       const API_ENDPOINT = "https://sudoku-rust-api.vercel.app/api/puzzle"
-      const STORAGE_KEY = "sudoku-game-state"
+
+      // Namespaced per project: on GitHub Pages every project site shares the
+      // one <user>.github.io origin, and localStorage is per-origin, so the
+      // old unqualified key collided with the other Sudoku builds.
+      const STORAGE_KEY = "sudoku-juris:game-state"
+      const LEGACY_STORAGE_KEY = "sudoku-game-state"
+
+      // Board geometry, shared by the loading view and the board itself so the
+      // two occupy the same box and nothing shifts between them.
+      function getBoardMetrics() {
+        // 20px body margin + 20px .container padding, each side
+        const pageChrome = 80
+        // 8px of inter-cell gaps + 6px of border on top of the nine tracks
+        const boardChrome = 14
+
+        // 453 caps the tracks so a full-size cell is 50px
+        const trackBudget = Math.min(
+          window.innerWidth - pageChrome - boardChrome,
+          453
+        )
+        const cellSize = Math.floor(trackBudget / 9)
+        const gridSize = cellSize * 9
+
+        return { cellSize, gridSize, boardOuter: gridSize + boardChrome }
+      }
 
       // Utility functions
       function parseStringPuzzle(puzzleString) {
@@ -206,7 +230,19 @@
             return false
           }
 
-          const savedData = localStorage.getItem(STORAGE_KEY)
+          let savedData = localStorage.getItem(STORAGE_KEY)
+
+          // One-time migration from the pre-namespace key
+          if (!savedData) {
+            const legacyData = localStorage.getItem(LEGACY_STORAGE_KEY)
+            if (legacyData) {
+              console.log("Migrating saved game from legacy storage key")
+              localStorage.setItem(STORAGE_KEY, legacyData)
+              localStorage.removeItem(LEGACY_STORAGE_KEY)
+              savedData = legacyData
+            }
+          }
+
           if (!savedData) {
             return false
           }
@@ -254,6 +290,7 @@
         try {
           if (typeof Storage !== "undefined" && window.localStorage) {
             localStorage.removeItem(STORAGE_KEY)
+            localStorage.removeItem(LEGACY_STORAGE_KEY)
           }
         } catch (error) {
           console.error("Error clearing saved game:", error)
@@ -342,10 +379,13 @@
         juris.setState('sudoku.currentPuzzle', newPuzzle)
 
         // Check if correct
+        let isIncorrect = false
+        let isComplete = false
+
         if (state.solutionPuzzle) {
-          const isCorrect = state.solutionPuzzle[row][col] === number
+          isIncorrect = state.solutionPuzzle[row][col] !== number
           
-          if (!isCorrect) {
+          if (isIncorrect) {
             console.log("❌ Incorrect number, will auto-remove")
             
             // Auto-remove incorrect number after delay
@@ -354,22 +394,31 @@
               const correctedPuzzle = JSON.parse(JSON.stringify(currentState.currentPuzzle))
               correctedPuzzle[row][col] = 0
               juris.setState('sudoku.currentPuzzle', correctedPuzzle)
+              // Re-sync storage: another action during the 1s window may have
+              // saved the incorrect value
               saveGameState()
             }, 1000)
           } else {
             console.log("✅ Correct!")
-            
-            // Check for completion
-            const isComplete = checkCompletion(newPuzzle, state.solutionPuzzle)
-            if (isComplete) {
-              juris.setState('sudoku.completed', true)
-              clearSavedGame()
-              console.log("🎉 Puzzle completed!")
-            }
+            isComplete = checkCompletion(newPuzzle, state.solutionPuzzle)
           }
         }
-        
-        saveGameState()
+
+        // Persist before handling completion, which clears the save -- saving
+        // afterwards would write the finished board straight back. An
+        // incorrect entry is never persisted: storage keeps the pre-placement
+        // board, which is exactly what the revert above restores.
+        if (isIncorrect) {
+          console.log("Skipping save for incorrect entry")
+        } else {
+          saveGameState()
+        }
+
+        if (isComplete) {
+          juris.setState('sudoku.completed', true)
+          clearSavedGame()
+          console.log("🎉 Puzzle completed!")
+        }
       }
 
       function clearCell(row, col) {
@@ -402,15 +451,24 @@
               const currentState = state()
               
               if (currentState.loading) {
+                const { boardOuter } = getBoardMetrics()
+
                 return [{
                   div: {
                     className: 'sudoku-container',
+                    style: {
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '20px'
+                    },
                     children: [{
                       div: {
                         className: 'loading',
                         style: {
-                          width: 'min(450px, 90vw)',
-                          height: 'min(450px, 90vw)',
+                          width: `${boardOuter}px`,
+                          height: `${boardOuter}px`,
+                          boxSizing: 'border-box',
                           border: '3px solid #333',
                           backgroundColor: 'white',
                           display: 'flex',
@@ -440,6 +498,38 @@
                           }
                         ]
                       }
+                    }, {
+                      // Mirrors the controls row under the board, so the
+                      // container keeps the same height while loading
+                      div: {
+                        className: 'controls',
+                        style: {
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '15px',
+                          width: '100%',
+                          maxWidth: `${boardOuter}px`,
+                          flexWrap: 'wrap',
+                          justifyContent: 'flex-start'
+                        },
+                        children: [{
+                          button: {
+                            className: 'btn',
+                            text: 'New Puzzle',
+                            disabled: true,
+                            style: {
+                              padding: '10px 20px',
+                              backgroundColor: '#1976d2',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              fontSize: '16px',
+                              opacity: '0.6',
+                              cursor: 'default'
+                            }
+                          }
+                        }]
+                      }
                     }]
                   }
                 }]
@@ -466,10 +556,7 @@
       juris.registerComponent('SudokuBoard', (props, { getState }) => {
         const { state } = props
         
-        // Calculate responsive cell size
-        const maxWidth = Math.min(window.innerWidth - 40, 453)
-        const cellSize = Math.floor(maxWidth / 9)
-        const gridSize = cellSize * 9
+        const { cellSize, boardOuter } = getBoardMetrics()
 
         return {
           div: {
@@ -489,13 +576,13 @@
                   SudokuGrid: { 
                     state: currentState, 
                     cellSize,
-                    gridSize 
+                    boardOuter 
                   }
                 },
                 {
                   SudokuControls: { 
                     state: currentState,
-                    gridSize 
+                    boardOuter 
                   }
                 }
               ]
@@ -649,7 +736,7 @@
 
       // Register controls component
       juris.registerComponent('SudokuControls', (props) => {
-        const { state, gridSize } = props
+        const { state, boardOuter } = props
         
         return {
           div: {
@@ -659,7 +746,7 @@
               alignItems: 'center',
               gap: '15px',
               width: '100%',
-              maxWidth: `${gridSize}px`,
+              maxWidth: `${boardOuter}px`,
               flexWrap: 'wrap',
               justifyContent: 'flex-start'
             },

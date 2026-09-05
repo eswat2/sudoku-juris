@@ -776,7 +776,7 @@ Both approaches can be built without build tools, but they differ in framework d
   </div>
   
   <script>
-    // Must implement all patterns manually (~800 lines)
+    // Must implement all patterns manually (947 script lines)
     class SudokuBoard extends HTMLElement {
       constructor() {
         super()
@@ -845,7 +845,7 @@ Both approaches can be built without build tools, but they differ in framework d
   <div id="app"></div>
   
   <script>
-    // Compact application code (~300 lines)
+    // Compact application code (767 script lines)
     const juris = new Juris({
       states: {
         sudoku: {
@@ -885,7 +885,8 @@ Both approaches can be built without build tools, but they differ in framework d
 ```
 
 **Characteristics:**
-- **One framework dependency** - 75KB Juris.js from CDN
+- **One framework dependency** - Juris.js from CDN: 167KB raw, 29KB gzipped
+  (measured at v0.88.2; the earlier 75KB figure was wrong)
 - **Compact application code** - framework handles the patterns
 - **Automatic coordination** - state changes trigger all necessary updates
 - **Lower maintenance** - less application code to maintain
@@ -894,8 +895,8 @@ Both approaches can be built without build tools, but they differ in framework d
 
 | Aspect | Web Components | Juris.js |
 |--------|----------------|----------|
-| **External Dependencies** | 0 KB | 75 KB (Juris.js) |
-| **Application Code** | ~800 lines | ~300 lines |
+| **External Dependencies** | 0 KB | 167 KB raw / 29 KB gzipped (Juris.js) |
+| **Application Code** | 947 script lines | 767 script lines |
 | **Total Complexity** | All in your codebase | Split between framework + app |
 | **Maintenance Burden** | You maintain everything | Framework maintains patterns |
 | **Debugging Surface** | Large application codebase | Smaller app + stable framework |
@@ -918,16 +919,24 @@ Both approaches can be built without build tools, but they differ in framework d
 
 Here are the measurable differences from our Sudoku conversion:
 
-| Metric | Web Components | Juris.js | Improvement |
-|--------|----------------|----------|-------------|
-| **Total Lines of Code** | ~800 lines | ~300 lines | **70% reduction** |
-| **DOM Update Code** | ~150 lines | ~0 lines | **100% elimination** |
-| **Event Management** | ~80 lines | ~5 lines | **94% reduction** |
-| **State Sync Logic** | ~120 lines | ~20 lines | **83% reduction** |
-| **Lifecycle Management** | ~60 lines | ~0 lines | **100% elimination** |
-| **Build Configuration** | ~50 lines + deps | ~0 lines | **100% elimination** |
-| **Memory Leak Risk** | High (manual cleanup) | Zero (automatic) | **Risk eliminated** |
-| **Time to Interactive** | 3-5 seconds | <1 second | **5x faster** |
+> **Corrected September 2026.** Only the line-count row below was ever
+> measured, and it was measured wrong. The per-category breakdowns and the
+> timing row were estimates presented as data. Measured rows are marked; the
+> rest are removed rather than restated, since no benchmark was run.
+
+| Metric | Web Components | Juris.js | Change | Measured? |
+|--------|----------------|----------|--------|-----------|
+| **Total lines, `index.html`** | 1,166 | 934 | **20% reduction** | yes |
+| **Non-blank lines in `<script>`** | 947 | 767 | **19% reduction** | yes |
+| **Manual DOM update code** | present throughout | none | eliminated | qualitative |
+| **Explicit lifecycle hooks** | `connectedCallback` | none | eliminated | qualitative |
+| **Build configuration** | none (single file) | none (single file) | unchanged | yes |
+| **Time to interactive** | — | — | never benchmarked | no |
+
+Counts are taken from the `index.html` at the commit either side of the
+migration (`aa8c79a` in sudoku-cc, `aa516c8` in sudoku-juris). Note the Web
+Components build was also a single file with no build step, so the
+"build configuration eliminated" claim never applied to this comparison.
 
 ---
 
