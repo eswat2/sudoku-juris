@@ -71,7 +71,12 @@ Two ordering invariants in `placeNumber()`, both of which were bugs before:
 
 Two targets, same file — `index.html` must work unmodified on both.
 
-- **Vercel**: https://sudoku-juris.vercel.app, auto-deploying from `main`
+- **Vercel**: https://sudoku-juris-eta.vercel.app, auto-deploying from `main`.
+  Note the `-eta` suffix — plain `sudoku-juris.vercel.app` is **not** this
+  project; that subdomain belongs to an unrelated Vite app, so Vercel assigned
+  a suffixed alias. The `-richard-hess-projects` domains sit behind Vercel
+  Authentication and return a login page to unauthenticated requests, so use
+  the `-eta` alias when checking what is live.
 - **GitHub Pages**: https://eswat2.github.io/sudoku-juris/, built from `main` / root; `.nojekyll` disables Jekyll
 
 No build step on either, so the deployed bytes are exactly the repo's `index.html` — `curl -s <url> | md5` against `md5 index.html` tells you whether a target is current.
