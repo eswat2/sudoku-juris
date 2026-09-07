@@ -839,7 +839,7 @@ Both approaches can be built without build tools, but they differ in framework d
 <head>
   <title>Sudoku Game</title>
   <!-- Single framework dependency -->
-  <script src="https://unpkg.com/juris@0.88.2/juris.js"></script>
+  <script src="https://unpkg.com/juris@0.9.0/juris.js"></script>
 </head>
 <body>
   <div id="app"></div>
@@ -885,8 +885,9 @@ Both approaches can be built without build tools, but they differ in framework d
 ```
 
 **Characteristics:**
-- **One framework dependency** - Juris.js from CDN: 167KB raw, 29KB gzipped
-  (measured at v0.88.2; the earlier 75KB figure was wrong)
+- **One framework dependency** - Juris.js from CDN: 133KB raw, 22KB gzipped
+  (measured at v0.9.0; v0.88.2 was 167KB raw / 29KB gzipped, and the earlier
+  75KB figure was wrong)
 - **Compact application code** - framework handles the patterns
 - **Automatic coordination** - state changes trigger all necessary updates
 - **Lower maintenance** - less application code to maintain
@@ -895,7 +896,7 @@ Both approaches can be built without build tools, but they differ in framework d
 
 | Aspect | Web Components | Juris.js |
 |--------|----------------|----------|
-| **External Dependencies** | 0 KB | 167 KB raw / 29 KB gzipped (Juris.js) |
+| **External Dependencies** | 0 KB | 133 KB raw / 22 KB gzipped (Juris.js) |
 | **Application Code** | 947 script lines | 767 script lines |
 | **Total Complexity** | All in your codebase | Split between framework + app |
 | **Maintenance Burden** | You maintain everything | Framework maintains patterns |

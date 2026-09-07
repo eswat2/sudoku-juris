@@ -208,7 +208,7 @@ juris.setState('sudoku', restoredGameState)
 Perhaps the most refreshing aspect was the deployment simplicity. The entire application is a single HTML file with a CDN import:
 
 ```html
-<script src="https://unpkg.com/juris@0.88.2/juris.js"></script>
+<script src="https://unpkg.com/juris@0.9.0/juris.js"></script>
 <script>
   const juris = new Juris({ states: {...}, layout: {...} })
   juris.render('#app')
