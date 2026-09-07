@@ -4,16 +4,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-A single-file Sudoku game (`index.html`) built with [Juris.js](https://unpkg.com/juris@0.9.0/juris.js), loaded from unpkg at runtime. No build step, no package.json, no local dependencies.
+A single-file Sudoku game (`index.html`) built with [Juris.js](https://unpkg.com/juris@0.9.0/juris.mini.js), loaded from unpkg at runtime. No build step, no package.json, no local dependencies.
 
 Juris versions are **not semver**: `0.9.0` is newer than `0.88.2` (released
 2025-08-17 vs 2025-07-26), because the minor is read as "9" and "88", not as
 ordered integers. npm's `latest` tag is the only reliable signal — a `^0.88.2`
 range would never resolve to `0.9.0`. Pin the exact version in the CDN URL, as
-above. Note also that 0.9.0 deletes four subsystems (`DOMEnhancer`,
-`HeadlessManager`, `TemplateCompiler`, `WebComponentFactory`), which is where
-its 34KB raw saving comes from; this app uses none of them, so the upgrade was
-a one-line change, but do not reach for those APIs.
+above. 0.9.0 did not delete `DOMEnhancer`, `HeadlessManager`,
+`TemplateCompiler` or `WebComponentFactory` — it **split them into opt-in
+files** (`juris-enhance.js`, `juris-headless.js`, `juris-template.js`,
+`juris-webcomponent.js`), which is where the core's 34KB raw saving comes from.
+They are still available if ever needed; this app uses none of them.
+
+The package also ships a **minified** build, and that is what the CDN tag
+loads: `juris.mini.js` is 55KB raw / 14KB gzipped against `juris.js`'s 133KB /
+22KB. Nothing in the app depends on which one is served, so prefer the mini
+build — the unminified file is 8KB of gzipped payload for no benefit.
+
+The framework was measured at 22KB, then 14KB; **`juris.js` and `juris.mini.js`
+are different files.** Say which one any number refers to.
 
 It is a port of the sibling `sudoku-cc` repo, which implements the same game with native Web Components. The two are companion pieces: `juris_blog_post.md` and `juris_vs_webcomponents.md` argue the case for the Juris version over that one. Behaviour, API, fallback puzzle, and storage schema are deliberately identical, so a fix in one usually applies to the other — check both.
 
@@ -92,7 +101,7 @@ No build step on either, so the deployed bytes are exactly the repo's `index.htm
 
 ## Docs
 
-`juris_blog_post.md` and `juris_vs_webcomponents.md` are advocacy pieces comparing this port to `sudoku-cc`. Their headline metrics were corrected in September 2026: the original "800 lines → 300 lines, 70% reduction" was never measured and was wrong (the real figures are 947 → 767 non-blank script lines, about 19%), and the framework was listed at 75KB when it is 133KB raw / 22KB gzipped (v0.9.0; v0.88.2 was 167KB / 29KB). Per-category line breakdowns and the "time to interactive" row were estimates presented as data and have been removed rather than restated. **Measure before adding any number to these files.**
+`juris_blog_post.md` and `juris_vs_webcomponents.md` are advocacy pieces comparing this port to `sudoku-cc`. Their headline metrics were corrected in September 2026: the original "800 lines → 300 lines, 70% reduction" was never measured and was wrong (the real figures are 947 → 767 non-blank script lines, about 19%), and the framework was listed at 75KB when the loaded `juris.mini.js` is 55KB raw / 14KB gzipped (v0.9.0; unminified `juris.js` is 133KB / 22KB, and v0.88.2 was 167KB / 29KB). Per-category line breakdowns and the "time to interactive" row were estimates presented as data and have been removed rather than restated. **Measure before adding any number to these files.**
 
 ## Known gaps
 
